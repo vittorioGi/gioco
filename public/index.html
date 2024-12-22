@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Elephant Multiplayer Game 2</title>
+  <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+  <script defer src="libs/face-api.js"></script>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      background-color: #f4f4f4;
+    }
+    canvas {
+      border: 1px solid black;
+      display: block;
+      margin: 10px auto;
+    }
+    video {
+      border: 2px solid #444;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      background-color: #007BFF;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h1>Elephant Multiplayer Game</h1>
+  <video id="video" autoplay playsinline width="320" height="240"></video>
+  <button id="capture">Cattura e Usa la Faccia</button>
+  <canvas id="faceCanvas" width="150" height="150"></canvas> <!-- Canvas per catturare la faccia -->
+  <canvas id="gameCanvas" width="800" height="600"></canvas> <!-- Canvas del gioco -->
+
+  <script>
+    const socket = io(); // Connessione al server tramite Socket.IO
+    const video = document.getElementById('video');
+    const faceCanvas = document.getElementById('faceCanvas');
+    const faceContext = faceCanvas.getContext('2d');
+    const gameCanvas = document.getElementById('gameCanvas');
+    const gameContext = gameCanvas.getContext('2d');
+    let faceImage = null; // Immagine del giocatore catturata
+    let playerX = 400; // Posizione iniziale del giocatore
+    let playerY = 300;
+    const playerSpeed = 5;
+    const players = {}; // Giocatori attivi nel gioco
+var stream;
+    // Funzione per avviare la webcam
+    async function startVideo() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+
+        await faceapi.nets.tinyFaceDetector.loadFromUri('./models'); // Carica i modelli
+        console.log("Modelli Face API.js caricati");
+      } catch (err) {
+        console.error("Errore nell'accesso alla webcam:", err);
+        alert("Non è stato possibile accedere alla webcam.");
+      }
+    }
+
+
+// Funzione per catturare e inviare la faccia al server
+async function captureAndSendFace() {
+  const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions());
+  if (detection) {
+    const { x, y, width, height } = detection.box;
+    faceContext.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+    faceContext.drawImage(video, x, y, width, height, 0, 0, faceCanvas.width, faceCanvas.height);
+
+    // Converte il canvas in Base64
+    const faceData = faceCanvas.toDataURL();
+
+    // Invia i dati al server
+    socket.emit('uploadFace', { image: faceData });
+
+    alert("Immagine del volto inviata al server!");
+    stream.getTracks().forEach((track) => {
+        if (track.readyState == 'live') {
+            track.stop();
+        }
+    });
+    
+      faceImage = new Image();
+        faceImage.src = faceCanvas.toDataURL();
+        faceImage.onload = () => {
+          alert("Faccia catturata e pronta per il gioco!");
+        };
+
+  } else {
+    alert("Nessun volto rilevato. Prova di nuovo.");
+  }
+}
+
+
+
+
+    // Funzione per catturare e ritagliare la faccia
+    async function captureAndCropFace() {
+      const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions());
+      if (detection) {
+        const { x, y, width, height } = detection.box;
+        faceContext.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+        faceContext.drawImage(video, x, y, width, height, 0, 0, faceCanvas.width, faceCanvas.height);
+        faceImage = new Image();
+        faceImage.src = faceCanvas.toDataURL();
+        faceImage.onload = () => {
+          alert("Faccia catturata e pronta per il gioco!");
+        };
+stream.getTracks().forEach((track) => {
+        if (track.readyState == 'live') {
+            track.stop();
+        }
+    });
+      } else {
+        alert("Nessun volto rilevato. Prova di nuovo.");
+      }
+    }
+
+    // Aggiungi evento al bottone di cattura
+    //document.getElementById('capture').addEventListener('click', captureAndCropFace);
+    
+    
+// Modifica l'evento del bottone
+document.getElementById('capture').addEventListener('click', captureAndSendFace);
+
+    // Funzione per gestire il movimento del giocatore
+    function handleMovement(event) {
+      switch (event.key) {
+        case "ArrowUp":
+        case "w":
+          playerY -= playerSpeed;
+          break;
+        case "ArrowDown":
+        case "s":
+          playerY += playerSpeed;
+          break;
+        case "ArrowLeft":
+        case "a":
+          playerX -= playerSpeed;
+          break;
+        case "ArrowRight":
+        case "d":
+          playerX += playerSpeed;
+          break;
+      }
+
+      // Impedisci al giocatore di uscire dal canvas
+      playerX = Math.max(50, Math.min(gameCanvas.width - 50, playerX));
+      playerY = Math.max(50, Math.min(gameCanvas.height - 50, playerY));
+
+      // Invia al server la nuova posizione
+      socket.emit('playerMovement', { x: playerX, y: playerY });
+    }
+
+    window.addEventListener("keydown", handleMovement);
+
+    // Funzione per disegnare i giocatori nel canvas
+    /*function drawPlayers() 
+    {
+      gameContext.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+      // Disegna il giocatore corrente
+      if (faceImage) {
+        const size = 100;
+        gameContext.drawImage(faceImage, playerX - size / 2, playerY - size / 2, size, size);
+      }
+
+      // Disegna gli altri giocatori
+      for (const id in players) {
+        const player = players[id];
+        if (player && id !== socket.id) {
+          gameContext.fillStyle = "green";
+          gameContext.fillRect(player.x - 25, player.y - 25, 50, 50);
+        }
+      }
+
+      requestAnimationFrame(drawPlayers);
+    }*/
+
+    // Gestisce i nuovi giocatori
+    socket.on('newPlayer', (player) => {
+      players[player.id] = { x: player.x, y: player.y };
+    });
+
+    // Aggiorna i movimenti degli altri giocatori
+    socket.on('playerMoved', (data) => {
+      if (players[data.id]) {
+        players[data.id].x = data.x;
+        players[data.id].y = data.y;
+      }
+    });
+
+    // Rimuove i giocatori disconnessi
+    socket.on('playerDisconnected', (playerId) => {
+      delete players[playerId];
+    });
+
+    // Riceve lo stato iniziale dei giocatori
+    socket.on('currentPlayers', (currentPlayers) => {
+      for (const id in currentPlayers) {
+        players[id] = currentPlayers[id];
+      }
+    });
+    
+    // Aggiorna l'immagine del volto di un altro giocatore
+socket.on('playerFaceUpdated', (data) => {
+  const { id, image } = data;
+  if (players[id]) {
+    const img = new Image();
+    img.src = image;
+    img.onload = () => {
+      players[id].faceImage = img;
+    };
+  }
+});
+
+// Disegna i giocatori con le immagini (aggiorna la funzione drawPlayers)
+function drawPlayers() 
+{
+	gameContext.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+	// Disegna il giocatore corrente
+	if (faceImage) 
+	{
+		const size = 100;
+		gameContext.drawImage(faceImage, playerX - size / 2, playerY - size / 2, size, size);
+	}
+
+	// Disegna gli altri giocatori
+	for (const id in players) 
+	{
+		
+		const player = players[id];
+		if (player && player.faceImage) 
+		{
+			const size = 100;
+			try
+			{
+				gameContext.drawImage(player.faceImage, player.x - size / 2, player.y - size / 2, size, size);
+				}
+				catch(err)
+				{
+					gameContext.fillStyle = "red";
+					gameContext.fillRect(player.x - 25, player.y - 25, 50, 50);
+					console.log(err);
+				}
+		} 
+		else if (player) 
+		{
+			gameContext.fillStyle = "green";
+			gameContext.fillRect(player.x - 25, player.y - 25, 50, 50);
+		}
+	}
+
+	requestAnimationFrame(drawPlayers);
+}
+
+
+    // Avvia la webcam e il disegno dei giocatori
+    startVideo();
+    drawPlayers();
+  </script>
+</body>
+</html>
